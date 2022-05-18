@@ -46,7 +46,8 @@ void UpdaterSLAM::delayed_init(std::shared_ptr<State> state, std::vector<std::sh
   while (it0 != feature_vec.end()) {
 
     // Clean the feature
-    (*it0)->clean_old_measurements(clonetimes);
+    // TURI trying to prevent removal of feature measurements that did not occur at clone times
+    // (*it0)->clean_old_measurements(clonetimes);
 
     // Count how many measurements
     int ct_meas = 0;
@@ -238,7 +239,8 @@ void UpdaterSLAM::update(std::shared_ptr<State> state, std::vector<std::shared_p
   while (it0 != feature_vec.end()) {
 
     // Clean the feature
-    (*it0)->clean_old_measurements(clonetimes);
+    // TURI trying to prevent removal of feature measurements that did not occur at clone times
+    // (*it0)->clean_old_measurements(clonetimes);
 
     // Count how many measurements
     int ct_meas = 0;

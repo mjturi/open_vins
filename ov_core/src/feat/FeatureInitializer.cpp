@@ -23,7 +23,27 @@
 
 using namespace ov_core;
 
+// static int clone_pose_interpolate(std::pair<double, ClonePose> &A, std::pair<double, ClonePose> &B, double h, std::pair<double, ClonePose> &C){
+//     /// Rotation
+//     Eigen::Matrix<double, 3, 3> _Rot;
+
+//     /// Position
+//     Eigen::Matrix<double, 3, 1> _pos;
+
+//     C.second._pos = A.second._pos + (h*(B.second._pos - A.second._pos));
+
+//   Eigen::Quaternion<float> quat1(A.second._Rot.block<3,3>(0,0)); //This extracts rotation matrix
+//   Eigen::Quaternion<float> quat2(B.second._Rot.block<3,3>(0,0));
+
+//   Eigen::Quaternion<float> quat3 = quat1.slerp(h,quat2); //This interpolates
+//   C.second._Rot = quat3.toRotationMatrix();
+
+// 	return 0;
+// }
+
 bool FeatureInitializer::single_triangulation(Feature *feat, std::unordered_map<size_t, std::unordered_map<double, ClonePose>> &clonesCAM) {
+
+  fprintf(stderr, "in single_triangulation function\n");
 
   // Total number of measurements
   // Also set the first measurement to be the anchor frame
@@ -38,6 +58,7 @@ bool FeatureInitializer::single_triangulation(Feature *feat, std::unordered_map<
     }
   }
   feat->anchor_cam_id = anchor_most_meas;
+  // TURI: not sure if this just means we're grabbing the very last timestamp we have seen
   feat->anchor_clone_timestamp = feat->timestamps.at(feat->anchor_cam_id).back();
 
   // Our linear system matrices
@@ -45,7 +66,54 @@ bool FeatureInitializer::single_triangulation(Feature *feat, std::unordered_map<
   Eigen::Vector3d b = Eigen::Vector3d::Zero();
 
   // Get the position of the anchor pose
-  ClonePose anchorclone = clonesCAM.at(feat->anchor_cam_id).at(feat->anchor_clone_timestamp);
+  // TURI:::::
+  // going to assume we can use linear interpolation for features extracted at non clone times (i.e all 'sub' cameras)
+  ClonePose anchorclone;
+  if (clonesCAM.at(feat->anchor_cam_id).find(feat->anchor_clone_timestamp) == clonesCAM.at(feat->anchor_cam_id).end()){
+    // fprintf(stderr, "INTERPOLATING\n");
+    // weird logic for our non cloned samples
+    // find the closest pair, then interpolate between them to our timestamp and boogie
+    std::pair<double, ClonePose> prev_anchor;
+    std::pair<double, ClonePose> post_anchor;
+
+    double closest_prev = 10000;
+    double closest_next = 10000;
+
+    for (std::pair<double, ClonePose> anchor : clonesCAM.at(feat->anchor_cam_id)){
+      double diff = feat->anchor_clone_timestamp - anchor.first;
+      if (diff > 0){
+        if (diff < closest_prev){
+          closest_prev = diff;
+          prev_anchor = anchor;
+        }
+      }
+      else {
+        if (std::fabs(diff) < closest_next){
+          closest_next = std::fabs(diff);
+          post_anchor = anchor;
+        }
+      }
+    }
+
+    // fprintf(stderr, "closest clones are %6.5f and %6.5f seconds away\n", closest_prev, closest_next);
+    
+    // now that we've found our anchors to interpolate between, get it done!
+	  double h = (double)(feat->anchor_clone_timestamp-prev_anchor.first) / (double)(post_anchor.first-prev_anchor.first);
+
+    anchorclone._pos = prev_anchor.second._pos + (h*(post_anchor.second._pos - prev_anchor.second._pos));
+
+    Eigen::Quaternion<double> quat1(prev_anchor.second._Rot.block<3,3>(0,0)); //This extracts rotation matrix
+    Eigen::Quaternion<double> quat2(post_anchor.second._Rot.block<3,3>(0,0));
+
+    Eigen::Quaternion<double> quat3 = quat1.slerp(h,quat2); //This interpolates
+    anchorclone._Rot = quat3.toRotationMatrix();
+  }
+  else {
+    // normal logic for clones
+    anchorclone = clonesCAM.at(feat->anchor_cam_id).at(feat->anchor_clone_timestamp);
+  }
+
+
   const Eigen::Matrix<double, 3, 3> &R_GtoA = anchorclone.Rot();
   const Eigen::Matrix<double, 3, 1> &p_AinG = anchorclone.pos();
 
@@ -56,8 +124,65 @@ bool FeatureInitializer::single_triangulation(Feature *feat, std::unordered_map<
     for (size_t m = 0; m < feat->timestamps.at(pair.first).size(); m++) {
 
       // Get the position of this clone in the global
-      const Eigen::Matrix<double, 3, 3> &R_GtoCi = clonesCAM.at(pair.first).at(feat->timestamps.at(pair.first).at(m)).Rot();
-      const Eigen::Matrix<double, 3, 1> &p_CiinG = clonesCAM.at(pair.first).at(feat->timestamps.at(pair.first).at(m)).pos();
+      // this is also going to need some secret sauce herre TURI
+      // since like half or more of our features will not have clones associated with them, we need to be constantly interping to find them
+      Eigen::Matrix<double, 3, 3> R_GtoCi;
+      Eigen::Matrix<double, 3, 1> p_CiinG;
+        // do the same check: see if we can find them, and if not we to find the closest two
+        // clonesCAM.at(pair.first).at(feat->timestamps.at(pair.first).at(m)).Rot();
+
+        if (pair.first != 0){ // if its not our base cam?
+        // if (clonesCAM.at(pair.first).find(feat->timestamps.at(pair.first).at(m)) == clonesCAM.at(pair.first).end()){
+        // fprintf(stderr, "INTERPOLATING2, cam id %d\n", pair.first);
+
+        // weird logic for our non cloned samples
+        // find the closest pair, then interpolate between them to our timestamp and boogie
+        std::pair<double, ClonePose> prev_anchor;
+        std::pair<double, ClonePose> post_anchor;
+
+        double closest_prev = 10000;
+        double closest_next = 10000;
+
+        for (std::pair<double, ClonePose> anchor : clonesCAM.at(pair.first)){
+          double diff = feat->timestamps.at(pair.first).at(m) - anchor.first;
+          // fprintf(stderr, "curr ts: %6.5f, diff between timestamps: %6.5f\n",feat->timestamps.at(pair.first).at(m), diff);
+          // if (diff == 0){
+
+          // }
+          if (diff > 0){
+            if (diff < closest_prev){
+              closest_prev = diff;
+              prev_anchor = anchor;
+            }
+          }
+          else {
+            if (std::fabs(diff) < closest_next){
+              closest_next = std::fabs(diff);
+              post_anchor = anchor;
+            }
+          }
+        }
+      fprintf(stderr, "closest clones are %6.5f and %6.5f seconds away\n", closest_prev, closest_next);
+
+        
+        // now that we've found our anchors to interpolate between, get it done!
+        double h = (double)(feat->anchor_clone_timestamp-prev_anchor.first) / (double)(post_anchor.first-prev_anchor.first);
+
+        p_CiinG = prev_anchor.second._pos + (h*(post_anchor.second._pos - prev_anchor.second._pos));
+
+        Eigen::Quaternion<double> quat1(prev_anchor.second._Rot.block<3,3>(0,0)); //This extracts rotation matrix
+        Eigen::Quaternion<double> quat2(post_anchor.second._Rot.block<3,3>(0,0));
+
+        Eigen::Quaternion<double> quat3 = quat1.slerp(h,quat2); //This interpolates
+        R_GtoCi = quat3.toRotationMatrix();
+      }
+      else {
+        R_GtoCi = clonesCAM.at(pair.first).at(feat->timestamps.at(pair.first).at(m)).Rot();
+        p_CiinG = clonesCAM.at(pair.first).at(feat->timestamps.at(pair.first).at(m)).pos(); 
+      }
+
+      // const Eigen::Matrix<double, 3, 3> &R_GtoCi = clonesCAM.at(pair.first).at(feat->timestamps.at(pair.first).at(m)).Rot();
+      // const Eigen::Matrix<double, 3, 1> &p_CiinG = clonesCAM.at(pair.first).at(feat->timestamps.at(pair.first).at(m)).pos();
 
       // Convert current position relative to anchor
       Eigen::Matrix<double, 3, 3> R_AtoCi;
@@ -79,6 +204,9 @@ bool FeatureInitializer::single_triangulation(Feature *feat, std::unordered_map<
     }
   }
 
+  // fprintf(stderr, "FINISHED INTERPOLATING\n");
+
+
   // Solve the linear system
   Eigen::MatrixXd p_f = A.colPivHouseholderQr().solve(b);
 
@@ -97,12 +225,14 @@ bool FeatureInitializer::single_triangulation(Feature *feat, std::unordered_map<
   // Then set the flag for bad (i.e. set z-axis to nan)
   if (std::abs(condA) > _options.max_cond_number || p_f(2, 0) < _options.min_dist || p_f(2, 0) > _options.max_dist ||
       std::isnan(p_f.norm())) {
+        fprintf(stderr, "BAD CONDITION NUMBER OR IS TOO CLOSE: cond-> %6.5f, p_f -> %6.5f\n", std::abs(condA), p_f(2, 0));
     return false;
   }
 
   // Store it in our feature object
   feat->p_FinA = p_f;
   feat->p_FinG = R_GtoA.transpose() * feat->p_FinA + p_AinG;
+    fprintf(stderr, "RETURNING FROM TRIANGULATE\n");
   return true;
 }
 

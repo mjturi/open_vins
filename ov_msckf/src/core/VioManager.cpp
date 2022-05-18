@@ -498,6 +498,7 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
   // Re-triangulate all current tracks in the current frame
   if (message.sensor_ids.at(0) == 0) {
 
+    fprintf(stderr, "about to retriangulate\n");
     // Re-triangulate features
     retriangulate_active_tracks(message);
 
@@ -739,6 +740,7 @@ bool VioManager::try_to_initialize(const ov_core::CameraData &message) {
 
 void VioManager::retriangulate_active_tracks(const ov_core::CameraData &message) {
 
+  fprintf(stderr, "in retriangulate function\n");
   // Start timing
   boost::posix_time::ptime retri_rT1, retri_rT2, retri_rT3, retri_rT4, retri_rT5;
   retri_rT1 = boost::posix_time::microsec_clock::local_time();
@@ -772,7 +774,11 @@ void VioManager::retriangulate_active_tracks(const ov_core::CameraData &message)
     }
 
     // Clean the feature
-    (*it0)->clean_old_measurements(clonetimes);
+    // TURI trying to prevent removal of feature measurements that did not occur at clone times
+    // (*it0)->clean_old_measurements(clonetimes);
+    // testing cleaning out measurements older than our oldest clone? before triangulating?
+    (*it0)->clean_older_measurements(state->margtimestep());
+    
 
     // Count how many measurements
     int ct_meas = 0;
@@ -852,6 +858,7 @@ void VioManager::retriangulate_active_tracks(const ov_core::CameraData &message)
       Eigen::Matrix3d R_ItoC = state->_calib_IMUtoCAM.at(feat.second->_anchor_cam_id)->Rot();
       Eigen::Vector3d p_IinC = state->_calib_IMUtoCAM.at(feat.second->_anchor_cam_id)->pos();
       // Anchor pose orientation and position
+      fprintf(stderr, "about to go looking for our cloned pose (cam %d) at active feature ts\n", feat.second->_anchor_cam_id);
       Eigen::Matrix3d R_GtoI = state->_clones_IMU.at(feat.second->_anchor_clone_timestamp)->Rot();
       Eigen::Vector3d p_IinG = state->_clones_IMU.at(feat.second->_anchor_clone_timestamp)->pos();
       // Feature in the global frame
