@@ -235,6 +235,7 @@ void VioManager::feed_measurement_simulation(double timestamp, const std::vector
 
 void VioManager::track_image_and_update(const ov_core::CameraData &message_const) {
 
+  // fprintf(stderr, "tracking and updating\n");
   // Start timing
   rT1 = boost::posix_time::microsec_clock::local_time();
 
@@ -257,11 +258,16 @@ void VioManager::track_image_and_update(const ov_core::CameraData &message_const
     message.masks.at(i) = mask_temp;
   }
 
+  // , "tracking and updating2\n");
+
+
   // Perform our feature tracking!
   trackFEATS->feed_new_camera(message);
   if (is_initialized_vio) {
     trackDATABASE->append_new_measurements(trackFEATS->get_feature_database());
   }
+
+  // fprintf(stderr, "tracking and updating3\n");
 
   // If the aruco tracker is available, the also pass to it
   // NOTE: binocular tracking for aruco doesn't make sense as we by default have the ids
@@ -305,27 +311,35 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
   //===================================================================================
   // State propagation, and clone augmentation
   //===================================================================================
-
   // Return if the camera measurement is out of order
   if (state->_timestamp > message.timestamp) {
-    PRINT_WARNING(YELLOW "image received out of order, unable to do anything (prop dt = %3f)\n" RESET,
+    PRINT_WARNING(YELLOW "%s image received out of order, unable to do anything (prop dt = %3f)\n" RESET, message.images.size() == 2 ? "stereo" : "mono",
                   (message.timestamp - state->_timestamp));
     return;
   }
 
   // Propagate the state forward to the current update time
-  // Also augment it with a new clone!
+  // Also augment it with a new clone! - TURI testing just cloning on master cam intervals
   // NOTE: if the state is already at the given time (can happen in sim)
   // NOTE: then no need to prop since we already are at the desired timestep
-  if (state->_timestamp != message.timestamp) {
-    propagator->propagate_and_clone(state, message.timestamp);
-  }
+  // if (state->_timestamp != message.timestamp) {
+  //   propagator->propagate_and_clone(state, message.timestamp);
+  // }
+  if (state->_timestamp != message.timestamp){
+      propagator->propagate_and_clone(state, message.timestamp);
+    }
   rT3 = boost::posix_time::microsec_clock::local_time();
 
   // If we have not reached max clones, we should just return...
   // This isn't super ideal, but it keeps the logic after this easier...
   // We can start processing things when we have at least 5 clones since we can start triangulating things...
+
+  // TURI
+  // this isnt necessarily true if we have a multi-cam setup
+  // i.e. could have a few clones, but half from a completely different view so no triangulating...
+
   if ((int)state->_clones_IMU.size() < std::min(state->_options.max_clone_size, 5)) {
+  // if ((int)state->_clones_IMU.size() < std::min(state->_options.max_clone_size, 5 * state->_options.num_cameras)) {
     PRINT_DEBUG("waiting for enough clone states (%d of %d)....\n", (int)state->_clones_IMU.size(),
                 std::min(state->_options.max_clone_size, 5));
     return;
@@ -345,6 +359,7 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
 
   // Now, lets get all features that should be used for an update that are lost in the newest frame
   // We explicitly request features that have not been deleted (used) in another update step
+
   std::vector<std::shared_ptr<Feature>> feats_lost, feats_marg, feats_slam;
   feats_lost = trackFEATS->get_feature_database()->features_not_containing_newer(state->_timestamp, false, true);
 
@@ -359,6 +374,7 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
   // Remove any lost features that were from other image streams
   // E.g: if we are cam1 and cam0 has not processed yet, we don't want to try to use those in the update yet
   // E.g: thus we wait until cam0 process its newest image to remove features which were seen from that camera
+  int feats_start = feats_lost.size();
   auto it1 = feats_lost.begin();
   while (it1 != feats_lost.end()) {
     bool found_current_message_camid = false;
@@ -380,7 +396,7 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
   it1 = feats_lost.begin();
   while (it1 != feats_lost.end()) {
     if (std::find(feats_marg.begin(), feats_marg.end(), (*it1)) != feats_marg.end()) {
-      // PRINT_WARNING(YELLOW "FOUND FEATURE THAT WAS IN BOTH feats_lost and feats_marg!!!!!!\n" RESET);
+      PRINT_WARNING(YELLOW "FOUND FEATURE THAT WAS IN BOTH feats_lost and feats_marg!!!!!!\n" RESET);
       it1 = feats_lost.erase(it1);
     } else {
       it1++;
@@ -395,6 +411,8 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
     bool reached_max = false;
     for (const auto &cams : (*it2)->timestamps) {
       if ((int)cams.second.size() > state->_options.max_clone_size) {
+      // TURI - multicam tracks
+      // if ((int)cams.second.size() > state->_options.max_clone_size / state->_options.num_cameras) {
         reached_max = true;
         break;
       }
@@ -466,8 +484,7 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
       // measurements)\n",(int)feats_slam.at(i)->featid,(int)feats_slam.at(i)->timestamps_left.size());
     } else {
       feats_slam_DELAYED.push_back(feats_slam.at(i));
-      // PRINT_DEBUG("[UPDATE-SLAM]: new feature ready %d (%d
-      // measurements)\n",(int)feats_slam.at(i)->featid,(int)feats_slam.at(i)->timestamps_left.size());
+      // fprintf(stderr, "[UPDATE-SLAM]: new feature ready (%d measurements)\n", (int)feats_slam.at(i)->timestamps.size());
     }
   }
 
@@ -535,11 +552,14 @@ void VioManager::do_feature_propagate_update(const ov_core::CameraData &message)
     // Thus we should be able to visualize the other unique camera stream
     // MSCKF features as they will also be appended to the vector
     good_features_MSCKF.clear();
+    MSCKF_locs.clear();
   }
 
   // Save all the MSCKF features used in the update
+  // _features_MSCKF = (featsup_MSCKF.clone());
   for (auto const &feat : featsup_MSCKF) {
     good_features_MSCKF.push_back(feat->p_FinG);
+    MSCKF_locs.push_back(std::make_pair(feat->anchor_cam_id, cv::Point2f(feat->uvs[feat->anchor_cam_id].back()(0), feat->uvs[feat->anchor_cam_id].back()(1))));
     feat->to_delete = true;
   }
 

@@ -95,20 +95,36 @@ public:
    */
   void initialize_with_gt(Eigen::Matrix<double, 17, 1> imustate);
 
-  /// If we are initialized or not
-  bool initialized() { return is_initialized_vio; }
+    /// Accessor to get the current state
+    std::shared_ptr<State> get_state() { return state; }
 
-  /// Timestamp that the system was initialized at
-  double initialized_time() { return startup_time; }
+    /// Accessor to get the current propagator
+    std::shared_ptr<Propagator> get_propagator() { return propagator; }
 
-  /// Accessor for current system parameters
-  VioManagerOptions get_params() { return params; }
+    // features
+    // std::vector<pixel_features> get_pixel_loc_features() {
+    //     std::vector<pixel_features> pixel_loc_feats;
 
-  /// Accessor to get the current state
-  std::shared_ptr<State> get_state() { return state; }
+    //     // Build an id-list of our "in state" features
+    //     // i.e. SLAM and last msckf update features
+    //     std::vector<size_t> highlighted_ids;
+    //     for (const auto &feat : state->_features_SLAM) {
+    //         highlighted_ids.push_back(feat.first);
+    //     }
 
-  /// Accessor to get the current propagator
-  std::shared_ptr<Propagator> get_propagator() { return propagator; }
+    //     trackFEATS->return_active_pix_locs(highlighted_ids, &pixel_loc_feats);
+
+    //     // SLAM features are now in the vector, just need to append (INSTATE, MSCKF LOC) now
+    //     for (const auto &loc : MSCKF_locs) {
+    //         pixel_features pf;
+    //         pf.camera_id = loc.first;
+    //         pf.state_indicator = INS_FEAT_ID;
+    //         pf.location = loc.second;
+    //         pixel_loc_feats.push_back(pf);
+    //     }
+
+    //     return pixel_loc_feats;
+    // }
 
   /// Get a nice visualization image of what tracks we have
   cv::Mat get_historical_viz_image();
@@ -234,7 +250,8 @@ protected:
 
   // Good features that where used in the last update (used in visualization)
   std::vector<Eigen::Vector3d> good_features_MSCKF;
-
+// store the pixel representation as well, so we can draw with them
+std::vector<std::pair<int, cv::Point2f>> MSCKF_locs;
   /// Feature initializer used to triangulate all active tracks
   std::shared_ptr<ov_core::FeatureInitializer> active_tracks_initializer;
 
@@ -245,6 +262,6 @@ protected:
   cv::Mat active_image;
 };
 
-} // namespace ov_msckf
+}  // namespace ov_msckf
 
-#endif // OV_MSCKF_VIOMANAGER_H
+#endif  // OV_MSCKF_VIOMANAGER_H
