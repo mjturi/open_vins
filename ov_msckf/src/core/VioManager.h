@@ -95,36 +95,36 @@ public:
    */
   void initialize_with_gt(Eigen::Matrix<double, 17, 1> imustate);
 
-    /// Accessor to get the current state
-    std::shared_ptr<State> get_state() { return state; }
+  /// Accessor to get the current state
+  std::shared_ptr<State> get_state() { return state; }
 
-    /// Accessor to get the current propagator
-    std::shared_ptr<Propagator> get_propagator() { return propagator; }
+  /// Accessor to get the current propagator
+  std::shared_ptr<Propagator> get_propagator() { return propagator; }
 
-    // features
-    // std::vector<pixel_features> get_pixel_loc_features() {
-    //     std::vector<pixel_features> pixel_loc_feats;
+  // features
+  // std::vector<pixel_features> get_pixel_loc_features() {
+  //     std::vector<pixel_features> pixel_loc_feats;
 
-    //     // Build an id-list of our "in state" features
-    //     // i.e. SLAM and last msckf update features
-    //     std::vector<size_t> highlighted_ids;
-    //     for (const auto &feat : state->_features_SLAM) {
-    //         highlighted_ids.push_back(feat.first);
-    //     }
+  //     // Build an id-list of our "in state" features
+  //     // i.e. SLAM and last msckf update features
+  //     std::vector<size_t> highlighted_ids;
+  //     for (const auto &feat : state->_features_SLAM) {
+  //         highlighted_ids.push_back(feat.first);
+  //     }
 
-    //     trackFEATS->return_active_pix_locs(highlighted_ids, &pixel_loc_feats);
+  //     trackFEATS->return_active_pix_locs(highlighted_ids, &pixel_loc_feats);
 
-    //     // SLAM features are now in the vector, just need to append (INSTATE, MSCKF LOC) now
-    //     for (const auto &loc : MSCKF_locs) {
-    //         pixel_features pf;
-    //         pf.camera_id = loc.first;
-    //         pf.state_indicator = INS_FEAT_ID;
-    //         pf.location = loc.second;
-    //         pixel_loc_feats.push_back(pf);
-    //     }
+  //     // SLAM features are now in the vector, just need to append (INSTATE, MSCKF LOC) now
+  //     for (const auto &loc : MSCKF_locs) {
+  //         pixel_features pf;
+  //         pf.camera_id = loc.first;
+  //         pf.state_indicator = INS_FEAT_ID;
+  //         pf.location = loc.second;
+  //         pixel_loc_feats.push_back(pf);
+  //     }
 
-    //     return pixel_loc_feats;
-    // }
+  //     return pixel_loc_feats;
+  // }
 
   /// Get a nice visualization image of what tracks we have
   cv::Mat get_historical_viz_image();
@@ -250,8 +250,8 @@ protected:
 
   // Good features that where used in the last update (used in visualization)
   std::vector<Eigen::Vector3d> good_features_MSCKF;
-// store the pixel representation as well, so we can draw with them
-std::vector<std::pair<int, cv::Point2f>> MSCKF_locs;
+  // store the pixel representation as well, so we can draw with them
+  std::vector<std::pair<int, cv::Point2f>> MSCKF_locs;
   /// Feature initializer used to triangulate all active tracks
   std::shared_ptr<ov_core::FeatureInitializer> active_tracks_initializer;
 
